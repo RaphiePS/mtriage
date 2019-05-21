@@ -4,6 +4,7 @@ import argparse
 from subprocess import call
 
 NAME = "forensicarchitecture/mtriage"
+CONT_NAME = NAME.replace("/", "_")  # docker doesn't allow slashes in cont names
 DIR_PATH = os.path.dirname(os.path.realpath(__file__))
 ENV_FILE = "{}/.env".format(DIR_PATH)
 HOME_PATH = os.path.expanduser("~")
@@ -33,10 +34,9 @@ def build():
 
 
 def develop():
-    # https://docker-py.readthedocs.io/en/stable/containers.html
-    cont_name = NAME.replace("/", "_") # NB: no / allowed in container names
     try:
-        DOCKER.containers.get(cont_name)
+        DOCKER.containers.get(CONT_NAME)
+        print("Develop container already running. Stop it and try again.")
     except docker.errors.NotFound:
         print("Building container from {}:dev...".format(NAME))
         # TODO: remake with docker py CLI.
@@ -46,7 +46,7 @@ def develop():
                 "run",
                 "-it",
                 "--name",
-                cont_name,
+                CONT_NAME,
                 "--env",
                 "BASE_DIR=/mtriage",
                 "--env-file={}".format(ENV_FILE),
@@ -56,14 +56,34 @@ def develop():
                 "{}:/mtriage".format(DIR_PATH),
                 "-v",
                 "{}/.config/gcloud:/root/.config/gcloud".format(HOME_PATH),
-                "-p",
-                "5000:5000",
                 "{}:dev".format(NAME),
             ]
         )
 
+
+def __run_cmd(cmd):
+    res = DOCKER.containers.run(
+        "{}:dev".format(NAME),
+        command=cmd,
+        remove=True,
+        privileged=True,
+        volumes={
+            DIR_PATH: {"bind": "/mtriage", "mode": "rw"},
+            "{}/.config/gcloud".format(HOME_PATH): {
+                "bind": "/root/.config/gcloud",
+                "mode": "rw",
+            },
+        },
+        environment={"BASE_DIR": "/mtriage"},
+    )
+    print(res)
+
+
 def test():
-    print("Running mtriage tests...")
+    print("Creating container to run tests...")
+    print("----------------------------------")
+    __run_cmd("python src/test/all.py")
+    print("----------------------------------")
     print("All tests for mtriage done.")
 
 
